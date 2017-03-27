@@ -1,0 +1,361 @@
+function varargout = GLW_importASCII(varargin)
+% GLW_IMPORTASCII MATLAB code for GLW_importASCII.fig
+%
+% Author : 
+% André Mouraux
+% Institute of Neurosciences (IONS)
+% Université catholique de louvain (UCL)
+% Belgium
+% 
+% Contact : andre.mouraux@uclouvain.be
+% This function is part of Letswave 5
+% See http://nocions.webnode.com/letswave for additional information
+
+
+
+
+
+% Begin initialization code - DO NOT EDIT
+gui_Singleton = 1;
+gui_State = struct('gui_Name',       mfilename, ...
+                   'gui_Singleton',  gui_Singleton, ...
+                   'gui_OpeningFcn', @GLW_importASCII_OpeningFcn, ...
+                   'gui_OutputFcn',  @GLW_importASCII_OutputFcn, ...
+                   'gui_LayoutFcn',  [] , ...
+                   'gui_Callback',   []);
+if nargin && ischar(varargin{1})
+    gui_State.gui_Callback = str2func(varargin{1});
+end
+
+if nargout
+    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+else
+    gui_mainfcn(gui_State, varargin{:});
+end
+% End initialization code - DO NOT EDIT
+
+
+
+
+% --- Executes just before GLW_importASCII is made visible.
+function GLW_importASCII_OpeningFcn(hObject, eventdata, handles, varargin)
+% This function has no output args, see OutputFcn.
+% Choose default command line output for GLW_importASCII
+handles.output = hObject;
+% Update handles structure
+guidata(hObject, handles);
+% UIWAIT makes GLW_importASCII wait for user response (see UIRESUME)
+% uiwait(handles.figure1);
+set(handles.outputedit,'String',pwd);
+set(handles.filebox,'Userdata',varargin{2});
+axis off;
+set(handles.delimbox,'Value',[1 2 3 4]);
+
+
+
+
+% --- Outputs from this function are returned to the command line.
+function varargout = GLW_importASCII_OutputFcn(hObject, eventdata, handles) 
+% varargout  cell array for returning output args (see VARARGOUT);
+% hObject    handle to figure
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+varargout{1} = handles.output;
+
+
+
+
+% --- Executes on selection change in filebox.
+function filebox_Callback(hObject, eventdata, handles)
+% hObject    handle to filebox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function filebox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to filebox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+% --- Executes on button press in pushbutton1.
+function pushbutton1_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton1 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+filterspec='*.txt;*.TXT;*.asc;*.ASC';
+st={};
+[st,pathname]=uigetfile(filterspec,'select datafiles','MultiSelect','on');
+if isequal(st,0) || isequal(pathname,0);
+else
+    if iscell(st)==0;
+        filename{1}=[pathname,st];
+    else
+        for filepos=1:length(st);
+            filename{filepos}=[pathname,st{filepos}];
+        end;
+    end;
+    set(handles.filebox,'String',filename);
+end;
+
+
+
+
+
+% --- Executes on button press in pushbutton2.
+function pushbutton2_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes on button press in pushbutton3.
+function pushbutton3_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+filepath=uigetdir(get(handles.outputedit,'String'));
+set(handles.outputedit,'String',filepath);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function outputedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to outputedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+% --- Executes on button press in pushbutton4.
+function pushbutton4_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton4 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+filenames=get(handles.filebox,'String');
+outputdir=get(handles.outputedit,'String');
+update_status=get(handles.filebox,'UserData');
+update_status.function(update_status.handles,'*** Importing ASCII data.',1,0);
+headersize=fix(str2num(get(handles.headeredit,'String')));
+channelline=fix(str2num(get(handles.channeledit,'String')));
+epochsize=fix(str2num(get(handles.xsizeedit,'String')));
+xstart=str2num(get(handles.xstartedit,'String'));
+samplingrate=str2num(get(handles.srateedit,'String'));
+delimiterstring=' ,\t;';
+delimiter=delimiterstring(get(handles.delimbox,'Value'));
+for filepos=1:length(filenames);
+    filename=filenames{filepos};
+    update_status.function(update_status.handles,['Importing : ' filename],1,0);
+    [header,data]=LW_importASCII(filename,headersize,channelline,epochsize,xstart,samplingrate,delimiter);
+    %delete characters from channel labels
+    stdel=get(handles.delchar_edit,'String');
+    if isempty(stdel);
+    else
+        for i=1:length(header.chanlocs);
+            st=header.chanlocs(i).labels;
+            for j=1:length(stdel);
+                st(find(st==stdel(j)))=[];
+            end;
+            header.chanlocs(i).labels=st;
+        end;
+    end;
+    %save header
+    update_status.function(update_status.handles,['Number of events : ' num2str(length(header.events))],1,0);
+    update_status.function(update_status.handles,['Number of epochs : ' num2str(header.datasize(1))],1,0);
+    update_status.function(update_status.handles,['Number of channels : ' num2str(header.datasize(2))],1,0);
+    update_status.function(update_status.handles,['Number of bins : ' num2str(header.datasize(6))],1,0);
+    [p,n,e]=fileparts(filenames{filepos});
+    st=fullfile(outputdir,[n,'.lw5']);
+    LW_save(st,[],header,data);
+end;
+update_status.function(update_status.handles,'Finished!',0,1);
+
+
+
+
+
+function headeredit_Callback(hObject, eventdata, handles)
+% hObject    handle to headeredit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function headeredit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to headeredit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+function channeledit_Callback(hObject, eventdata, handles)
+% hObject    handle to channeledit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function channeledit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to channeledit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+function betweenedit_Callback(hObject, eventdata, handles)
+% hObject    handle to betweenedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of betweenedit as text
+%        str2double(get(hObject,'String')) returns contents of betweenedit as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function betweenedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to betweenedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+function xsizeedit_Callback(hObject, eventdata, handles)
+% hObject    handle to xsizeedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function xsizeedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to xsizeedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+function srateedit_Callback(hObject, eventdata, handles)
+% hObject    handle to srateedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function srateedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to srateedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+function xstartedit_Callback(hObject, eventdata, handles)
+% hObject    handle to xstartedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function xstartedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to xstartedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+% --- Executes on selection change in delimbox.
+function delimbox_Callback(hObject, eventdata, handles)
+% hObject    handle to delimbox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function delimbox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to delimbox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function delchar_edit_Callback(hObject, eventdata, handles)
+% hObject    handle to delchar_edit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of delchar_edit as text
+%        str2double(get(hObject,'String')) returns contents of delchar_edit as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function delchar_edit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to delchar_edit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in autodetectlines_chk.
+function autodetectlines_chk_Callback(hObject, eventdata, handles)
+% hObject    handle to autodetectlines_chk (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hint: get(hObject,'Value') returns toggle state of autodetectlines_chk

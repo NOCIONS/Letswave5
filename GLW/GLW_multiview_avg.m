@@ -1,0 +1,1450 @@
+function varargout = GLW_multiview_avg(varargin)
+% GLW_MULTIVIEW_AVG MATLAB code for GLW_multiview_avg.fig
+%
+% Author : 
+% Andr? Mouraux
+% Institute of Neurosciences (IONS)
+% Universit? catholique de louvain (UCL)
+% Belgium
+% 
+% Contact : andre.mouraux@uclouvain.be
+% This function is part of Letswave 5
+% See http://nocions.webnode.com/letswave for additional information
+%
+
+
+
+
+
+% Begin initialization code - DO NOT EDIT
+gui_Singleton = 0;
+gui_State = struct('gui_Name',       mfilename, ...
+                   'gui_Singleton',  gui_Singleton, ...
+                   'gui_OpeningFcn', @GLW_multiview_avg_OpeningFcn, ...
+                   'gui_OutputFcn',  @GLW_multiview_avg_OutputFcn, ...
+                   'gui_LayoutFcn',  [] , ...
+                   'gui_Callback',   []);
+if nargin && ischar(varargin{1})
+    gui_State.gui_Callback = str2func(varargin{1});
+end
+
+if nargout
+    [varargout{1:nargout}] = gui_mainfcn(gui_State, varargin{:});
+else
+    gui_mainfcn(gui_State, varargin{:});
+end
+% End initialization code - DO NOT EDIT
+
+
+
+
+
+
+function updategraph(handles);
+%tpdata(graphs,plots,x)
+
+%userdata
+userdata=get(handles.filebox,'UserData');
+userdata2=get(handles.chanbox,'UserData');
+header=userdata(1).header;
+
+%figure
+figure(userdata2.wavefigure);
+
+%list of selected files
+files=get(handles.filebox,'Value');
+%list of selected channels
+channels=get(handles.chanbox,'Value');
+%list of selected epochs
+epochs=get(handles.epochbox,'Value');
+
+%index,y,z,dy,dz
+index=get(handles.indexpopup,'Value');
+ypos=str2num(get(handles.yedit,'String'));
+zpos=str2num(get(handles.zedit,'String'));
+
+%fetch selections
+files=get(handles.filebox,'Value');
+epochs=get(handles.epochbox,'Value');
+channels=get(handles.chanbox,'Value');
+
+%filestring,epochstring,chanstring (used to display legends)
+filestring=get(handles.filebox,'String');
+epochstring=get(handles.epochbox,'String');
+chanstring=get(handles.chanbox,'String');
+
+%fetch legend options
+display_title=strcmpi(get(handles.menu_display_title,'Checked'),'on');
+display_legend=strcmpi(get(handles.menu_display_legend,'Checked'),'on');
+
+%fetch plot options
+display_waves=1;
+if strcmpi(get(handles.menu_wave_mean,'Checked'),'on');
+    display_waves=1;
+end;
+if strcmpi(get(handles.menu_wave_meansd,'Checked'),'on');
+    display_waves=2;
+end;
+if strcmpi(get(handles.menu_reverse_yaxis,'Checked'),'on');
+    display_reverse_y=1;
+else
+    display_reverse_y=0;
+end;
+
+%fetch data (tpdata(files,epochs,channels))
+datasizemax=userdata(1).header.datasize(6);
+for filepos=1:length(files);
+    if userdata(filepos).header.datasize(6)>datasizemax;
+        datasizemax=userdata(filepos).header.datasize(6);
+    end;
+end;
+tpdata=zeros(length(files),length(epochs),length(channels),datasizemax);
+for filepos=1:length(files);
+    header=userdata(files(filepos)).header;
+    %dy,dz
+    dy=fix((ypos-header.ystart)/header.ystep)+1; %$
+    dz=fix((zpos-header.zstart)/header.zstep)+1; %$
+    %tpx
+    tp=1:1:header.datasize(6); %$
+    tpx=((tp-1)*header.xstep)+header.xstart; %$
+    for epochpos=1:length(epochs);
+        for chanpos=1:length(channels);
+            tpdata(filepos,epochpos,chanpos,1:header.datasize(6))=squeeze(userdata(files(filepos)).data(epochs(epochpos),channels(chanpos),index,dz,dy,:));
+        end;
+    end;
+end;
+
+%permute dimensions (tpdata(graphrow,graphavg,wave)
+tpdata=permute(tpdata,[get(handles.graphavgpopup,'Value'),get(handles.graphrowpopup,'Value'),get(handles.graphwavepopup,'Value'),4]);
+
+%titlestring
+if display_title==1;
+    title_index=get(handles.graphrowpopup,'Value');
+    if title_index==1;
+        title_string=filestring(files);
+    end;
+    if title_index==2;
+        title_string=epochstring(epochs);
+    end;
+    if title_index==3;
+        title_string=chanstring(channels);
+    end;
+end;
+
+%legendstring
+if display_legend==1;
+    legend_index=get(handles.graphwavepopup,'Value');
+    if legend_index==1;
+        legend_string=filestring(files);
+    end;
+    if legend_index==2;
+        legend_string=epochstring(epochs);
+    end;
+    if legend_index==3;
+        legend_string=chanstring(channels);
+    end;
+end;
+        
+
+
+
+%calculate mean and secondary wave
+tpsize=size(tpdata);
+tpsize(1)=1;
+tpdata_mean=zeros(tpsize);
+tpdata_mean(1,:,:,:)=mean(tpdata,1); %(avg,row,wave,data)
+if display_waves==2; %mean_sd
+    tpdata_mean(2,:,:,:)=std(tpdata,0,1);
+end;  
+
+
+%update axis edits if set to Auto
+if get(handles.yautochk,'Value')==1;
+    ymax=max(tpdata_mean(:));
+    ymin=min(tpdata_mean(:));
+    ymax=ymax+((ymax-ymin)*0.1);
+    ymin=ymin-((ymax-ymin)*0.1);
+    set(handles.yminedit,'String',num2str(ymin));
+    set(handles.ymaxedit,'String',num2str(ymax));
+end;
+if get(handles.xautochk,'Value')==1;
+    set(handles.xminedit,'String',num2str(tpx(1)));
+    set(handles.xmaxedit,'String',num2str(tpx(end)));
+end;
+%numgraphavg,numgraphcols and numwaves
+numgraphrows=size(tpdata,2);
+numwaves=size(tpdata,3);
+%varycolor
+lcolors=varycolor(numwaves);
+%plot tpdata
+for graphrowpos=1:numgraphrows;
+    currentaxis(graphrowpos)=subaxis(numgraphrows,1,graphrowpos,'MarginLeft',0.06,'MarginRight',0.02,'MarginTop',0.04,'MarginBottom',0.08,'SpacingHoriz',0.03,'SpacingVert',0.03);
+    hold off;
+    legendstring={};
+    for wavepos=1:numwaves;
+        h(wavepos)=plot(tpx,squeeze(tpdata_mean(1,graphrowpos,wavepos,:)),'Color',lcolors(wavepos,[1,2,3]));
+        hold on;
+    end;
+    %xaxis
+    xmin=str2num(get(handles.xminedit,'String'));
+    xmax=str2num(get(handles.xmaxedit,'String'));
+    if xmin>xmax;
+        xtp=xmin;
+        xmin=xmax;
+        xmax=xtp;
+    end;
+    if xmin==xmax;
+        xmin=-1;
+        xmax=1;
+    end;
+    set(currentaxis(graphrowpos),'XLim',[xmin xmax]);
+    %yaxis
+    ymin=str2num(get(handles.yminedit,'String'));
+    ymax=str2num(get(handles.ymaxedit,'String'));
+    if ymin>ymax;
+        ytp=ymin;
+        ymin=ymax;
+        ymax=ytp;
+    end;
+    if ymin==ymax;
+        ymin=-1;
+        ymax=1;
+    end;
+    set(currentaxis(graphrowpos),'YLim',[ymin ymax]);
+    if display_reverse_y==0;
+        set(currentaxis(graphrowpos),'YDir','normal');
+    else
+        set(currentaxis(graphrowpos),'YDir','reverse');
+    end;
+    %title
+    if display_title==1;
+        title(title_string{graphrowpos});
+    end;
+    if display_waves==2;
+        for wavepos=1:numwaves;
+            uistack(h(wavepos),'top');
+        end;
+    end;
+    %legend
+    if display_legend==1;
+        legend(legend_string);
+    end;
+    for wavepos=1:numwaves;
+        if display_waves==2; %(also draw sd)
+            shadedErrorBar(tpx,squeeze(tpdata_mean(1,graphrowpos,wavepos,:)),squeeze(tpdata_mean(2,graphrowpos,wavepos,:)),{'color',squeeze(lcolors(wavepos,:))},1);
+            hold on;
+        end;
+    end;
+end;
+%update userdata
+userdata2.currentaxis=currentaxis;
+set(handles.chanbox,'UserData',userdata2);
+%update info for figure
+set(userdata2.wavefigure_handles.xtext,'UserData',handles);
+%cursors
+%userdata=get(handles.chanbox,'UserData');
+%userdata.cursor1=str2num(get(handles.int1edit,'String'));
+%userdata.cursor2=str2num(get(handles.int2edit,'String'));
+%set(handles.chanbox,'UserData',userdata);
+
+
+
+
+
+
+% --- Executes just before GLW_multiview_avg is made visible.
+function GLW_multiview_avg_OpeningFcn(hObject, eventdata, handles, varargin)
+% This function has no output args, see OutputFcn.
+% hObject    handle to figure
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+% varargin   command line arguments to GLW_multiview_avg (see VARARGIN)
+% Choose default command line output for GLW_multiview_avg
+handles.output = hObject;
+axis off;
+%load display settings
+tp=which('letswave.m');
+[p,n,e]=fileparts(tp);
+localtarget=[p filesep 'settings' filesep 'multiview_avg_settings.mat']
+load(localtarget);
+set(handles.menu_wave_mean,'Checked',multiview_settings.menu_wave_mean);
+set(handles.menu_wave_meansd,'Checked',multiview_settings.menu_wave_meansd);
+set(handles.menu_display_title,'Checked',multiview_settings.menu_display_title);
+set(handles.menu_display_legend,'Checked',multiview_settings.menu_display_legend);
+set(handles.menu_reverse_yaxis,'Checked',multiview_settings.menu_reverse_yaxis);
+set(handles.menu_display_menu,'Checked',multiview_settings.menu_display_menu);
+% Update handles structure
+guidata(hObject, handles);
+%filebox
+st=varargin{2};
+set(handles.filebox,'String',st);
+st=get(handles.filebox,'String');
+for filepos=1:length(st);
+    [p,n,e]=fileparts(st{filepos});
+    inputfiles{filepos}=[n,e];
+end;
+set(handles.filebox,'String',inputfiles);
+%inputdir
+set(handles.inputdir,'String',p);
+%UserData
+for filepos=1:length(inputfiles);
+    %load header data
+    [p,n,e]=fileparts(inputfiles{filepos});
+    st=[get(handles.inputdir,'String'),filesep,n,'.lw5'];
+    [header,data]=LW_load(st);
+    userdata(filepos).header=header;
+    userdata(filepos).data=data;
+    %check if channel locations can be used to plot scalp maps
+    chanok=0;
+    for chanpos=1:length(header.chanlocs);
+        if header.chanlocs(chanpos).topo_enabled==1;
+            chanok=1;
+        end;
+    end;
+    if chanok==0;
+        set(handles.scalppopup,'Enable','off');
+        set(handles.topobutton,'Enable','off');
+        set(handles.headplotbutton,'Enable','off');
+    end;
+    if isfield(header,'filename_spl');
+    else;
+        set(handles.headplotbutton,'Enable','off');
+    end;
+end;
+%create figure
+[userdata2.wavefigure userdata2.wavefigure_handles]=GLW_multiview_figure;
+userdata2.mother_handles=handles;
+if strcmpi(get(handles.menu_display_menu,'Checked'),'on');
+    set(gcf,'MenuBar','figure');
+end;
+set(gcf,'ToolBar','none');
+%assign userdata
+set(handles.filebox,'UserData',userdata);
+set(handles.chanbox,'UserData',userdata2);
+%set filepos
+set(handles.filebox,'Value',1);
+%set chanbox
+for chanpos=1:header.datasize(2);
+    chanstring{chanpos}=header.chanlocs(chanpos).labels;
+end;
+set(handles.chanbox,'String',chanstring);
+set(handles.chanbox,'Value',1);
+%set epochbox
+for epochpos=1:header.datasize(1);
+    epochstring{epochpos}=num2str(epochpos);
+end;
+set(handles.epochbox,'String',epochstring);
+set(handles.epochbox,'Value',1);
+%set indexpopup
+if isfield(header,'indexlabels');
+    for indexpos=1:header.datasize(3);
+        indexstring{indexpos}=header.indexlabels{indexpos};
+    end;
+else
+    for indexpos=1:header.datasize(3);
+        indexstring{indexpos}=num2str(indexpos);
+    end;
+end;
+set(handles.indexpopup,'String',indexstring);
+set(handles.indexpopup,'Value',1);
+if length(indexstring)>1;
+    set(handles.indexpopup,'Visible','on');
+end;
+%set yedit and zedit
+set(handles.yedit,'String',num2str(header.ystart));
+set(handles.zedit,'String',num2str(header.zstart));
+%displaydata
+if isfield(header,'displaydata');
+    disp('displaydata was found');
+    displaydata=header.displaydata;
+    set(handles.yminedit,'String',displaydata.ymin);
+    set(handles.ymaxedit,'String',displaydata.ymax);
+    set(handles.yautochk,'Value',displaydata.yauto);
+    set(handles.xminedit,'String',displaydata.xmin);
+    set(handles.xmaxedit,'String',displaydata.xmax);
+    set(handles.xautochk,'Value',displaydata.xauto);
+end;
+%update graph
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Outputs from this function are returned to the command line.
+function varargout = GLW_multiview_avg_OutputFcn(hObject, eventdata, handles) 
+% varargout  cell array for returning output args (see VARARGOUT);
+% hObject    handle to figure
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+% Get default command line output from handles structure
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function figure_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to figure (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+
+
+
+% --- Executes on selection change in filebox.
+function filebox_Callback(hObject, eventdata, handles)
+% hObject    handle to filebox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+% --- Executes during object creation, after setting all properties.
+function filebox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to filebox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+% Hint: listbox controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on selection change in epochbox.
+function epochbox_Callback(hObject, eventdata, handles)
+% hObject    handle to epochbox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function epochbox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to epochbox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: listbox controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on selection change in chanbox.
+function chanbox_Callback(hObject, eventdata, handles)
+% hObject    handle to chanbox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function chanbox_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to chanbox (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: listbox controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on selection change in graphavgpopup.
+function graphavgpopup_Callback(hObject, eventdata, handles)
+% hObject    handle to graphavgpopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+sel1=get(handles.graphavgpopup,'Value');
+sel2=get(handles.graphrowpopup,'Value');
+sel3=get(handles.graphwavepopup,'Value');
+tp=[1,2,3];
+tp(find(tp==sel1))=[];
+tp(find(tp==sel2))=[];
+tp(find(tp==sel3))=[];
+if isempty(tp);
+else
+    if sel2==sel1;
+        sel2=tp(1);
+    end;
+    if sel3==sel1;
+        sel3=tp(1);
+    end;
+end;
+set(handles.graphavgpopup,'Value',sel1);
+set(handles.graphrowpopup,'Value',sel2);
+set(handles.graphwavepopup,'Value',sel3);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function graphavgpopup_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to graphavgpopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on selection change in graphwavepopup.
+function graphwavepopup_Callback(hObject, eventdata, handles)
+% hObject    handle to graphwavepopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+sel1=get(handles.graphavgpopup,'Value');
+sel2=get(handles.graphrowpopup,'Value');
+sel3=get(handles.graphwavepopup,'Value');
+tp=[1,2,3];
+tp(find(tp==sel1))=[];
+tp(find(tp==sel2))=[];
+tp(find(tp==sel3))=[];
+if isempty(tp);
+else
+    if sel1==sel3;
+        sel1=tp(1);
+    end;
+    if sel2==sel3;
+        sel2=tp(1);
+    end;
+end;
+set(handles.graphavgpopup,'Value',sel1);
+set(handles.graphrowpopup,'Value',sel2);
+set(handles.graphwavepopup,'Value',sel3);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function graphwavepopup_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to graphwavepopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in pushbutton4.
+function pushbutton4_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton4 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --- Executes on selection change in indexpopup.
+function indexpopup_Callback(hObject, eventdata, handles)
+% hObject    handle to indexpopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function indexpopup_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to indexpopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+function yedit_Callback(hObject, eventdata, handles)
+% hObject    handle to yedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function yedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to yedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function zedit_Callback(hObject, eventdata, handles)
+% hObject    handle to zedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function zedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to zedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on selection change in graphrowpopup.
+function graphrowpopup_Callback(hObject, eventdata, handles)
+% hObject    handle to graphrowpopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+sel1=get(handles.graphavgpopup,'Value');
+sel2=get(handles.graphrowpopup,'Value');
+sel3=get(handles.graphwavepopup,'Value');
+tp=[1,2,3];
+tp(find(tp==sel1))=[];
+tp(find(tp==sel2))=[];
+tp(find(tp==sel3))=[];
+if isempty(tp);
+else
+    if sel1==sel2;
+        sel1=tp(1);
+    end;
+    if sel3==sel2;
+        sel3=tp(1);
+    end;
+end;
+set(handles.graphavgpopup,'Value',sel1);
+set(handles.graphrowpopup,'Value',sel2);
+set(handles.graphwavepopup,'Value',sel3);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function graphrowpopup_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to graphrowpopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in yautochk.
+function yautochk_Callback(hObject, eventdata, handles)
+% hObject    handle to yautochk (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes on button press in yminedit.
+function yminedit_Callback(hObject, eventdata, handles)
+% hObject    handle to yminedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+set(handles.yautochk,'Value',0);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function yminedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to yminedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+
+
+
+% --- Executes on button press in pushbutton5.
+function pushbutton5_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton5 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+function edit6_Callback(hObject, eventdata, handles)
+% hObject    handle to yminedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of yminedit as text
+%        str2double(get(hObject,'String')) returns contents of yminedit as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function edit6_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to yminedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function ymaxedit_Callback(hObject, eventdata, handles)
+% hObject    handle to ymaxedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+set(handles.yautochk,'Value',0);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function ymaxedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to ymaxedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in xautochk.
+function xautochk_Callback(hObject, eventdata, handles)
+% hObject    handle to xautochk (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+function xmaxedit_Callback(hObject, eventdata, handles)
+% hObject    handle to xmaxedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+set(handles.xautochk,'Value',0);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function xmaxedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to xmaxedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function xminedit_Callback(hObject, eventdata, handles)
+% hObject    handle to xminedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+set(handles.xautochk,'Value',0);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function xminedit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to xminedit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+
+% --- Executes on button press in ydirchk.
+function ydirchk_Callback(hObject, eventdata, handles)
+% hObject    handle to ydirchk (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+updategraph(handles);
+figure(handles.figure);
+
+
+
+% --- Executes on mouse motion over figure - except title and menu.
+function figure_WindowButtonMotionFcn(hObject, eventdata, handles)
+% hObject    handle to figure (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+% --- Executes on selection change in scalppopup.
+function scalppopup_Callback(hObject, eventdata, handles)
+% hObject    handle to scalppopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function scalppopup_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to scalppopup (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: popupmenu controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --- Executes on button press in pushbutton8.
+function pushbutton8_Callback(hObject, eventdata, handles)
+% hObject    handle to pushbutton8 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%userdata
+userdata=get(handles.filebox,'UserData');
+header=userdata(1).header;
+%set colnames
+colnames{1}='file';
+colnames{2}='epoch';
+colnames{3}='channel';
+colnames{4}='min(x)';
+colnames{5}='min(y)';
+colnames{6}='max(x)';
+colnames{7}='max(y)';
+colnames{8}='mean(x)';
+colnames{9}='std(y)';
+%set tdata
+%get list of selected files
+files=get(handles.filebox,'Value');
+%get list of selected channels
+channels=get(handles.chanbox,'Value');
+%get list of selected epochs
+epochs=get(handles.epochbox,'Value');
+%get index
+index=get(handles.indexpopup,'Value');
+%get y and z position
+ypos=str2num(get(handles.yedit,'String'));
+zpos=str2num(get(handles.zedit,'String'));
+%userdata2
+userdata2=get(handles.chanbox,'UserData');
+%cursor1 and cursor2
+cursor1=userdata2.cursor1;
+cursor2=userdata2.cursor2;
+%loop through selected files, epochs and channels
+filestring=get(handles.filebox,'String');
+epochstring=get(handles.epochbox,'String');
+channelstring=get(handles.chanbox,'String');
+linepos=1;
+for filepos=1:length(files);
+    %header
+    header=userdata(filepos).header;
+    %dy,dz
+    dy=((ypos-header.ystart)/header.xstep)+1;
+    dz=((zpos-header.zstart)/header.zstep)+1;
+    %dcursor (bin positions of cursor1 and cursor2)
+    dcursor1=round(((cursor1-header.xstart)/header.xstep)+1);
+    dcursor2=round(((cursor2-header.xstart)/header.xstep)+1);
+    if dcursor1>dcursor2
+        dcursortp=dcursor1;
+        dcursor1=dcursor2;
+        dcursor2=dcursortp;
+    end;
+    %check limits
+    if dcursor1<1;
+        dcursor1=1;
+    end;
+    if dcursor1>header.datasize(6);
+        dcursor1=header.datasize(6);
+    end;
+    if dcursor2<1;
+        dcursor2=1;
+    end;
+    if dcursor2>header.datasize(6);
+        dcursor2=header.datasize(6);
+    end;
+    for epochpos=1:length(epochs);
+        for channelpos=1:length(channels);
+            %col1 = file name
+            tdata{linepos,1}=filestring{files(filepos)};
+            %col1 = epoch name
+            tdata{linepos,2}=epochstring{epochs(epochpos)};
+            %col2 = channel name
+            tdata{linepos,3}=channelstring{channels(channelpos)};
+            %fetchdata (min and max)
+            tp=squeeze(userdata(files(filepos)).data(epochs(epochpos),channels(channelpos),index,dz,dy,dcursor1:dcursor2));
+            [maxy,maxi]=max(tp);
+            [miny,mini]=min(tp);
+            maxi=maxi+dcursor1-1;
+            mini=mini+dcursor1-1;
+            maxx=((maxi-1)*header.xstep)+header.xstart;
+            minx=((mini-1)*header.xstep)+header.xstart;
+            meany=mean(tp);
+            stdy=std(tp);
+            tdata{linepos,4}=num2str(minx);
+            tdata{linepos,5}=num2str(miny);
+            tdata{linepos,6}=num2str(maxx);
+            tdata{linepos,7}=num2str(maxy);
+            tdata{linepos,8}=num2str(meany);
+            tdata{linepos,9}=num2str(stdy);
+            linepos=linepos+1;
+        end;
+    end;
+end;
+%launch table
+GLW_multiview_table(tdata,colnames);
+
+
+% --- Executes on button press in topobutton.
+function topobutton_Callback(hObject, eventdata, handles)
+% hObject    handle to topobutton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%set scalpdata (LW_topoplot(data,epoch,index,x,y,z,varargin))
+%userdata
+userdata=get(handles.filebox,'UserData');
+userdata2=get(handles.chanbox,'UserData');
+header=userdata(1).header;
+%maplimits
+maplimits=[str2num(get(handles.yminedit,'String')) str2num(get(handles.ymaxedit,'String'))];
+%get list of selected files
+files=get(handles.filebox,'Value');
+%check headers
+for filepos=1:length(files);
+    ok=0;
+    for chanpos=1:length(userdata(files(filepos)).header.chanlocs);
+        if userdata(files(filepos)).header.chanlocs(chanpos).topo_enabled==1;
+            ok=1;
+        end;
+    end;
+    if ok==0;
+        msgbox('No channel locations, cannot compute scalp maps.');
+        return;
+    end;
+end;
+%get list of selected epochs
+epochs=get(handles.epochbox,'Value');
+%get list of selected channels
+channels=get(handles.chanbox,'Value');
+%get index
+index=get(handles.indexpopup,'Value');
+%get y and z position
+ypos=str2num(get(handles.yedit,'String'));
+zpos=str2num(get(handles.zedit,'String'));
+dy=((ypos-header.ystart)/header.ystep)+1;
+dz=((zpos-header.zstart)/header.zstep)+1;
+%cursor1, cursor2
+cursor1=userdata2.cursor1;
+cursor2=userdata2.cursor2;
+%dcursor (bin positions of cursor1 and cursor2)
+dcursor1=round((cursor1-header.xstart)/header.xstep)+1;
+dcursor2=round((cursor2-header.xstart)/header.xstep)+1;
+if dcursor1>dcursor2
+    dcursortp=dcursor1;
+    dcursor1=dcursor2;
+    dcursor2=dcursortp;
+end;
+%filestring,epochstring;
+filestring=get(handles.filebox,'String');
+epochstring=get(handles.epochbox,'String');
+%launch figure;
+topofigure=figure;
+set(topofigure,'ToolBar','none');
+%loop through selected files (will plot one scalp map per selected file, in separate columns)
+for filepos=1:length(files);
+    %loop through selected epochs (will plot one scalp map per selected epoch, in separate rows)
+    for epochpos=1:length(epochs);
+        %find maximum and minimum
+        tp=squeeze(userdata(files(filepos)).data(epochs(epochpos),channels(1),index,dz,dy,dcursor1:dcursor2));
+        [all_maxy,all_maxi]=max(tp);
+        [all_miny,all_mini]=min(tp);
+        if length(channels)>1
+            for channelpos=2:length(channels);
+                tp=squeeze(userdata(files(filepos)).data(epochs(epochpos),channels(channelpos),index,dz,dy,dcursor1:dcursor2));
+                [maxy,maxi]=max(tp);
+                [miny,mini]=min(tp);
+                if maxy>all_maxy;
+                    all_maxy=maxy;
+                    all_maxi=maxi;
+                end;
+                if miny<all_miny;
+                    all_miny=miny;
+                    all_mini=mini;
+                end;
+            end;
+        end;
+        all_maxi=all_maxi+dcursor1-1;
+        all_mini=all_mini+dcursor1-1;
+        all_maxx=((all_maxi-1)*header.xstep)+header.xstart;
+        all_minx=((all_mini-1)*header.xstep)+header.xstart;
+        %graphpos
+        graphpos=filepos+((epochpos-1)*length(files));
+        %subplot
+        tpaxis=subaxis(length(epochs),length(files),graphpos,'MarginLeft',0.01,'MarginRight',0.01,'MarginTop',0.05,'MarginBottom',0.01);
+        if get(handles.scalppopup,'Value')==1
+            dx=all_maxi;
+        else
+            dx=all_mini;
+        end;
+        tpaxis=LW_topoplot(header,userdata(files(filepos)).data,epochs(epochpos),index,dx,dy,dz,'maplimits',maplimits,'shading','interp','whitebk','on');
+        [p,n,e]=fileparts(filestring{files(filepos)});
+        st=[n,' - E:',epochstring{epochs(epochpos)}];
+        st(findstr(st,'_'))=' ';
+        title(gca,st);
+    end;
+end;
+
+
+% --- Executes on button press in headplotbutton.
+function headplotbutton_Callback(hObject, eventdata, handles)
+% hObject    handle to headplotbutton (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%set headplot (LW_headplot(header,data,epoch,index,x,y,z,varargin))
+%set headplot (LW_headplot(header,data,epoch,index,x,y,z,varargin)
+%userdata
+userdata=get(handles.filebox,'UserData');
+userdata2=get(handles.chanbox,'UserData');
+header=userdata(1).header;
+%get list of selected files
+files=get(handles.filebox,'Value');
+%check headers
+for filepos=1:length(files);
+    if isfield(userdata(files(filepos)).header,'filename_spl');
+    else
+        msgbox('No splinefile, cannot compute headplots.');
+        return;
+    end;
+end;
+%get list of selected epochs
+epochs=get(handles.epochbox,'Value');
+%get list of selected channels
+channels=get(handles.chanbox,'Value');
+%get index
+index=get(handles.indexpopup,'Value');
+%get y and z position
+ypos=str2num(get(handles.yedit,'String'));
+zpos=str2num(get(handles.zedit,'String'));
+dy=((ypos-header.ystart)/header.ystep)+1;
+dz=((zpos-header.zstart)/header.zstep)+1;
+%cursor1, cursor2
+cursor1=userdata2.cursor1;
+cursor2=userdata2.cursor2;
+%dcursor (bin positions of cursor1 and cursor2)
+dcursor1=round((cursor1-header.xstart)/header.xstep)+1;
+dcursor2=round((cursor2-header.xstart)/header.xstep)+1;
+if dcursor1>dcursor2
+    dcursortp=dcursor1;
+    dcursor1=dcursor2;
+    dcursor2=dcursortp;
+end;
+%filestring,epochstring;
+filestring=get(handles.filebox,'String');
+epochstring=get(handles.epochbox,'String');
+%ymin,ymax
+ycmin=str2num(get(handles.yminedit,'String'))
+ycmax=str2num(get(handles.ymaxedit,'String'))
+%launch figure;
+topofigure=figure;
+set(topofigure,'ToolBar','none');
+%loop through selected files (will plot one scalp map per selected file, in separate columns)
+for filepos=1:length(files);
+    header=userdata(files(filepos)).header;
+    %loop through selected epochs (will plot one scalp map per selected epoch, in separate rows)
+    for epochpos=1:length(epochs);
+        %find maximum and minimum
+        tp=squeeze(userdata(files(filepos)).data(epochs(epochpos),channels(1),index,dz,dy,dcursor1:dcursor2));
+        [all_maxy,all_maxi]=max(tp);
+        [all_miny,all_mini]=min(tp);
+        if length(channels)>1
+            for channelpos=2:length(channels);
+                tp=squeeze(userdata(files(filepos)).data(epochs(epochpos),channels(channelpos),index,dz,dy,dcursor1:dcursor2));
+                [maxy,maxi]=max(tp);
+                [miny,mini]=min(tp);
+                if maxy>all_maxy;
+                    all_maxy=maxy;
+                    all_maxi=maxi;
+                end;
+                if miny<all_miny;
+                    all_miny=miny;
+                    all_mini=mini;
+                end;
+            end;
+        end;
+        all_maxi=all_maxi+dcursor1-1;
+        all_mini=all_mini+dcursor1-1;
+        all_maxx=((all_maxi-1)*header.xstep)+header.xstart;
+        all_minx=((all_mini-1)*header.xstep)+header.xstart;
+        %graphpos
+        graphpos=filepos+((epochpos-1)*length(files));
+        %subplot
+        tpaxis=subaxis(length(epochs),length(files),graphpos,'MarginLeft',0.01,'MarginRight',0.01,'MarginTop',0.05,'MarginBottom',0.01);
+        if get(handles.scalppopup,'Value')==1
+            dx=all_maxi;
+        else
+            dx=all_mini;
+        end;
+        tpaxis=LW_headplot(header,userdata(files(filepos)).data,epochs(epochpos),index,dx,dy,dz,'maplimits',[ycmin ycmax]);
+        [p,n,e]=fileparts(filestring{files(filepos)});
+        st=[n,' - E:',epochstring{epochs(epochpos)}];
+        st(findstr(st,'_'))=' ';
+        title(gca,st);
+        set(gca,'View',[0 90]);
+        headplotaxis(filepos,epochpos)=gca;
+    end;
+end;
+userdata2=get(handles.chanbox,'UserData');
+userdata2.tpaxis=headplotaxis;
+set(handles.chanbox,'UserData',userdata2);
+
+
+% --- Executes on slider movement.
+function azimuthslider_Callback(hObject, eventdata, handles)
+% hObject    handle to azimuthslider (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%userdata2
+userdata2=get(handles.chanbox,'UserData');
+azimuth=get(handles.azimuthslider,'Value');
+headplotaxis=userdata2.tpaxis;
+for filepos=1:size(headplotaxis,1);
+    for epochpos=1:size(headplotaxis,2);
+        view=get(headplotaxis(filepos,epochpos),'View');
+        view(1)=azimuth;
+        set(headplotaxis(filepos,epochpos),'View',view);
+    end;
+end;
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function azimuthslider_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to azimuthslider (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor',[.9 .9 .9]);
+end
+
+
+
+
+% --- If Enable == 'on', executes on mouse press in 5 pixel border.
+% --- Otherwise, executes on mouse press in 5 pixel border or over azimuthslider.
+function azimuthslider_ButtonDownFcn(hObject, eventdata, handles)
+% hObject    handle to azimuthslider (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+
+% --- Executes on slider movement.
+function elevationslider_Callback(hObject, eventdata, handles)
+% hObject    handle to elevationslider (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+userdata2=get(handles.chanbox,'UserData');
+elevation=get(handles.elevationslider,'Value');
+headplotaxis=userdata2.tpaxis;
+for filepos=1:size(headplotaxis,1);
+    for epochpos=1:size(headplotaxis,2);
+        view=get(headplotaxis(filepos,epochpos),'View');
+        view(2)=elevation;
+        set(headplotaxis(filepos,epochpos),'View',view);
+    end;
+end;
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function elevationslider_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to elevationslider (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor',[.9 .9 .9]);
+end
+
+
+
+
+
+% --- Executes when user attempts to close figure.
+function figure_CloseRequestFcn(hObject, eventdata, handles)
+% hObject    handle to figure (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%save display data
+try
+    displaydata.ymin=get(handles.yminedit,'String');
+    displaydata.ymax=get(handles.ymaxedit,'String');
+    displaydata.yauto=get(handles.yautochk,'Value');
+    displaydata.xmin=get(handles.xminedit,'String');
+    displaydata.xmax=get(handles.xmaxedit,'String');
+    displaydata.xauto=get(handles.xautochk,'Value');
+    inputfiles=get(handles.filebox,'String');
+    for filepos=1:length(inputfiles);
+        %load header
+        [p,n,e]=fileparts(inputfiles{filepos});
+        st=[get(handles.inputdir,'String'),filesep,n,'.lw5'];
+        load(st,'-MAT');
+        header.displaydata=displaydata;
+        %save header
+        save(st,'header','-MAT');
+    end;
+end;
+%close gracefully
+userdata2=get(handles.chanbox,'UserData');
+delete(userdata2.wavefigure);
+delete(hObject);
+
+
+
+
+
+function int1edit_Callback(hObject, eventdata, handles)
+% hObject    handle to int1edit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+userdata=get(handles.chanbox,'UserData');
+userdata.cursor1=str2num(get(handles.int1edit,'String'));
+set(handles.chanbox,'UserData',userdata);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function int1edit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to int1edit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function int2edit_Callback(hObject, eventdata, handles)
+% hObject    handle to int2edit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+userdata=get(handles.chanbox,'UserData');
+userdata.cursor2=str2num(get(handles.int2edit,'String'));
+set(handles.chanbox,'UserData',userdata);
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --- Executes during object creation, after setting all properties.
+function int2edit_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to int2edit (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+% --------------------------------------------------------------------
+function Untitled_1_Callback(hObject, eventdata, handles)
+% hObject    handle to Untitled_1 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+% --------------------------------------------------------------------
+function Untitled_2_Callback(hObject, eventdata, handles)
+% hObject    handle to Untitled_2 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+
+
+
+
+% --------------------------------------------------------------------
+function menu_display_title_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_display_title (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if strcmpi(get(handles.menu_display_title,'Checked'),'on');
+    set(handles.menu_display_title,'Checked','off');
+else
+    set(handles.menu_display_title,'Checked','on');
+end;    
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --------------------------------------------------------------------
+function menu_display_legend_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_display_legend (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if strcmpi(get(handles.menu_display_legend,'Checked'),'on');
+    set(handles.menu_display_legend,'Checked','off');
+else
+    set(handles.menu_display_legend,'Checked','on');
+end;    
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+
+% --------------------------------------------------------------------
+function menu_wave_mean_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_wave_mean (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+set(handles.menu_wave_mean,'Checked','on');
+set(handles.menu_wave_meansd,'Checked','off');
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+% --------------------------------------------------------------------
+function menu_wave_meansd_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_wave_meansd (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+set(handles.menu_wave_mean,'Checked','off');
+set(handles.menu_wave_meansd,'Checked','on');
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+
+% --------------------------------------------------------------------
+function Untitled_3_Callback(hObject, eventdata, handles)
+% hObject    handle to Untitled_3 (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+
+
+% --------------------------------------------------------------------
+function menu_reverse_yaxis_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_reverse_yaxis (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if strcmpi(get(handles.menu_reverse_yaxis,'Checked'),'on');
+    set(handles.menu_reverse_yaxis,'Checked','off');
+else
+    set(handles.menu_reverse_yaxis,'Checked','on');
+end;  
+updategraph(handles);
+figure(handles.figure);
+
+
+
+
+
+% --------------------------------------------------------------------
+function menu_default_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_default (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+%waveforms
+multiview_settings.menu_wave_mean=get(handles.menu_wave_mean,'Checked');
+multiview_settings.menu_wave_meansd=get(handles.menu_wave_meansd,'Checked');
+multiview_settings.menu_display_title=get(handles.menu_display_title,'Checked');
+multiview_settings.menu_display_legend=get(handles.menu_display_legend,'Checked');
+multiview_settings.menu_reverse_yaxis=get(handles.menu_reverse_yaxis,'Checked');
+multiview_settings.menu_display_menu=get(handles.menu_display_menu,'Checked');
+tp=which('letswave.m');
+[p,n,e]=fileparts(tp);
+localtarget=[p filesep 'settings' filesep 'multiview_avg_settings.mat']
+save(localtarget,'multiview_settings');
+
+
+% --------------------------------------------------------------------
+function Untitled_4_Callback(hObject, eventdata, handles)
+
+
+
+% --------------------------------------------------------------------
+function menu_display_menu_Callback(hObject, eventdata, handles)
+% hObject    handle to menu_display_menu (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+if strcmpi(get(handles.menu_display_menu,'Checked'),'on');
+    set(handles.menu_display_menu,'Checked','off');
+    userdata2=get(handles.chanbox,'UserData');
+    figure(userdata2.wavefigure);
+    set(gcf,'MenuBar','none');
+else
+    set(handles.menu_display_menu,'Checked','on');
+    userdata2=get(handles.chanbox,'UserData');
+    figure(userdata2.wavefigure);
+    set(gcf,'MenuBar','figure');
+end;   
